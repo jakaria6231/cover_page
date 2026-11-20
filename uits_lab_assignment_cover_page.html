@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UITS Lab Assignment &amp; Report Cover Page Generator</title>
+
+    <!-- Google Fonts: Inter for UI & Template 1, Playfair Display, Libre Baskerville, Source Sans 3, Merriweather for Cover Templates -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&family=Merriweather:wght@400;700;900&family=Playfair+Display:wght@700;800&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest" crossorigin="anonymous"></script>
+
+    <!-- PDF.js for rendering & extracting editable text from uploaded .pdf cover pages -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous"></script>
+
+    <!-- Mammoth.js for rendering uploaded .docx cover pages as editable HTML -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js" crossorigin="anonymous"></script>
+
+    <!-- html2pdf.js for one-click direct PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+            color: #0f172a;
+        }
+
+        /* Exact A4 Paper Dimensions at 96 DPI (210mm x 297mm = 794px x 1123px) */
+        .a4-page {
+            width: 794px;
+            height: 1123px;
+            background: #ffffff;
+            box-shadow: 0 20px 45px -12px rgba(15, 23, 42, 0.22);
+            position: relative;
+            overflow: hidden;
+            box-sizing: border-box;
+            flex-shrink: 0;
+        }
+
+        /* Subtle editable hover feedback on cover elements */
+        .a4-page [contenteditable="true"]:hover {
+            outline: 1px dashed rgba(122, 0, 30, 0.45);
+            outline-offset: 2px;
+            border-radius: 2px;
+        }
+        .a4-page [contenteditable="true"]:focus {
+            outline: 2px solid #7A001E;
+            outline-offset: 2px;
+            border-radius: 2px;
+        }
+
+        /* Draggable & Inline-Editable Overlay Boxes for Custom Uploaded JPG/PNG/PDF Covers */
+        .custom-overlay-item {
+            position: absolute;
+            min-width: 24px;
+            max-width: 740px;
+            padding: 2px 5px;
+            border: 1px dashed transparent;
+            border-radius: 4px;
+            transition: border-color 0.15s, background-color 0.15s;
+            z-index: 20;
+            line-height: 1.25;
+        }
+        .custom-overlay-item:hover {
+            border-color: rgba(122, 0, 30, 0.55);
+        }
+        .custom-overlay-item.selected {
+            border-color: #7A001E;
+            box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
+        }
+        .custom-overlay-item.has-whiteout {
+            background-color: #ffffff;
+        }
+
+        /* Dedicated drag handle so clicking text always edits cleanly */
+        .overlay-drag-handle {
+            position: absolute;
+            top: -18px;
+            left: -1px;
+            height: 17px;
+            padding: 0 6px;
+            background: #7A001E;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            font-size: 10px;
+            font-weight: 600;
+            border-radius: 4px 4px 0 0;
+            cursor: move;
+            user-select: none;
+            display: none;
+            align-items: center;
+            gap: 3px;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        .custom-overlay-item:hover .overlay-drag-handle,
+        .custom-overlay-item.selected .overlay-drag-handle {
+            display: inline-flex;
+        }
+
+        .custom-overlay-item [contenteditable="true"] {
+            cursor: text;
+            user-select: text;
+            outline: none !important;
+            white-space: pre-wrap;
+            word-break: break-word;
+            min-width: 16px;
+            min-height: 1em;
+        }
+
+        /* DOCX Editable Canvas Styling */
+        #customDocxEditor {
+            width: 100%;
+            height: 100%;
+            padding: 64px 72px;
+            overflow-y: auto;
+            outline: none;
+            font-family: 'Times New Roman', Georgia, serif;
+            color: #111827;
+            line-height: 1.5;
+        }
+        #customDocxEditor img {
+            max-width: 100%;
+            height: auto;
+        }
+        #customDocxEditor table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 7px;
+            height: 7px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Print Styles: Only print the exact A4 Cover Page cleanly */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                width: 210mm !important;
+                height: 297mm !important;
+                overflow: hidden !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            #previewScrollArea {
+                padding: 0 !important;
+                margin: 0 !important;
+                overflow: visible !important;
+                background: #ffffff !important;
+                display: block !important;
+            }
+            #a4ScaleWrapper {
+                transform: none !important;
+                width: 210mm !important;
+                height: 297mm !important;
+                margin: 0 !important;
+            }
+            .a4-page {
+                width: 210mm !important;
+                height: 297mm !important;
+                box-shadow: none !important;
+                margin: 0 !important;
+                border: none !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .custom-overlay-item {
+                border-color: transparent !important;
+                box-shadow: none !important;
+            }
+            .overlay-drag-handle {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col lg:h-screen lg:overflow-hidden">
+
+    <!-- Top Application Bar -->
+    <header class="no-print bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 z-30 shadow-sm">
+        <!-- Brand Identity -->
+        <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#7A001E] to-[#10213F] flex items-center justify-center text-white shadow-sm">
+                <i data-lucide="file-text" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-sm sm:text-base font-bold text-slate-900 leading-tight">UITS Cover Page Generator</h1>
+                <p class="text-[11px] text-slate-500 hidden sm:block">University of Information Technology and Sciences</p>
+            </div>
+        </div>
+
+        <!-- Template Switcher Buttons (1, 2, 3, + 4 Upload Layout) -->
+        <div class="flex flex-wrap items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl border border-slate-200/80">
+            <button id="tplBtn1" onclick="setTemplate(1)" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-[#7A001E] text-white shadow-sm">
+                <i data-lucide="layout-template" class="w-3.5 h-3.5"></i>
+                <span>1. Classic</span>
+            </button>
+            <button id="tplBtn2" onclick="setTemplate(2)" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 text-slate-600 hover:bg-slate-100">
+                <i data-lucide="align-center" class="w-3.5 h-3.5"></i>
+                <span>2. Simple</span>
+            </button>
+            <button id="tplBtn3" onclick="setTemplate(3)" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 text-slate-600 hover:bg-slate-100">
+                <i data-lucide="columns" class="w-3.5 h-3.5"></i>
+                <span>3. Professional</span>
+            </button>
+            <button id="tplBtn4" onclick="handleUploadLayoutBtnClick()" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 text-slate-700 bg-amber-50 hover:bg-amber-100 border border-amber-300">
+                <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
+                <span>4. + Upload Layout</span>
+            </button>
+        </div>
+
+        <!-- Export & Print Actions -->
+        <div class="flex items-center gap-2">
+            <button onclick="downloadPDF()" class="px-3.5 py-2 rounded-xl bg-[#7A001E] hover:bg-[#5e0017] text-white text-xs font-semibold shadow-sm transition flex items-center gap-1.5">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                <span>Download PDF</span>
+            </button>
+            <button onclick="window.print()" class="px-3.5 py-2 rounded-xl bg-[#10213F] hover:bg-[#1b3563] text-white text-xs font-semibold shadow-sm transition flex items-center gap-1.5">
+                <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">Print</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Collaborative Workspace -->
+    <div class="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
+
+        <!-- LEFT SIDEBAR: Form Inputs & Logo Controls -->
+        <aside class="no-print w-full lg:w-[390px] xl:w-[420px] bg-white border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col lg:h-full overflow-y-auto">
+            <div class="p-4 sm:p-5 space-y-5">
+
+                <!-- University Logo Card (Default UITS Logo Set) -->
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                            <i data-lucide="shield-check" class="w-3.5 h-3.5 text-[#7A001E]"></i>
+                            University Logo
+                        </span>
+                        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">UITS Default Active</span>
+                    </div>
+
+                    <div class="bg-white rounded-xl border border-slate-200 p-2.5 flex items-center justify-center">
+                        <img id="logoPreviewThumb" alt="UITS University Logo" class="max-h-14 w-auto object-contain">
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <label class="flex-1 cursor-pointer px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-xs font-medium text-slate-700 text-center transition flex items-center justify-center gap-1.5">
+                            <i data-lucide="image-plus" class="w-3.5 h-3.5 text-slate-600"></i>
+                            <span>Custom Logo</span>
+                            <input type="file" accept="image/*" onchange="handleLogoUpload(event)" class="hidden">
+                        </label>
+                        <button onclick="resetLogo()" class="px-3 py-1.5 rounded-xl bg-slate-200/80 hover:bg-slate-300/80 text-xs font-medium text-slate-700 transition">
+                            Reset Default
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Document & Course Information -->
+                <div class="space-y-3">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <i data-lucide="book-open" class="w-3.5 h-3.5 text-[#7A001E]"></i>
+                        Course &amp; Document Details
+                    </h2>
+
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Document Type</label>
+                            <input id="inputDocType" type="text" value="Lab Assignment" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#7A001E]">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Semester</label>
+                            <input id="inputSemester" type="text" value="Autumn 2026" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#7A001E]">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2.5">
+                        <div class="col-span-1">
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Course Code</label>
+                            <input id="inputCourseCode" type="text" value="CSE0611215" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#7A001E]">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Course Title</label>
+                            <input id="inputCourseTitle" type="text" value="Digital Logic Design" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#7A001E]">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submitted To (Faculty) -->
+                <div class="space-y-3 pt-1 border-t border-slate-100">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <i data-lucide="user-check" class="w-3.5 h-3.5 text-[#10213F]"></i>
+                        Submitted To (Faculty)
+                    </h2>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Teacher's Name</label>
+                        <input id="inputTeacherName" type="text" value="Farah Ulfat Zaima" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#10213F]">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Designation</label>
+                            <input id="inputTeacherDesig" type="text" value="Lecturer" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#10213F]">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Faculty Dept.</label>
+                            <input id="inputTeacherDept" type="text" value="Department of CSE" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#10213F]">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submitted By (Student) -->
+                <div class="space-y-3 pt-1 border-t border-slate-100">
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <i data-lucide="graduation-cap" class="w-3.5 h-3.5 text-[#7A001E]"></i>
+                        Submitted By (Student)
+                    </h2>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Student Name</label>
+                        <input id="inputStudentName" type="text" value="Tanvir Ahmed" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#7A001E]">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Student ID</label>
+                            <input id="inputStudentId" type="text" value="04324105101042" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#7A001E]">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Section / Batch</label>
+                            <input id="inputSection" type="text" value="Section: 2A" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#7A001E]">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Department</label>
+                            <input id="inputDept" type="text" value="Department of CSE" oninput="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#7A001E]">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Submission Date</label>
+                            <input id="inputDate" type="date" onchange="updatePreview()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:border-[#7A001E]">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </aside>
+
+        <!-- RIGHT PANEL: Live A4 Cover Page Preview & Custom Layout Editor -->
+        <main class="flex-1 flex flex-col bg-slate-200/70 lg:h-full overflow-hidden">
+
+            <!-- Preview Zoom & Direct Edit Sub-Toolbar -->
+            <div class="no-print bg-white/90 backdrop-blur border-b border-slate-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2 text-xs text-slate-600">
+                    <span class="font-semibold text-slate-800">A4 Live Preview</span>
+                    <span class="hidden sm:inline text-slate-400">• Click any text on the page to edit directly</span>
+                </div>
+
+                <!-- Zoom Controls -->
+                <div class="flex items-center gap-1.5 bg-slate-100 px-2 py-1 rounded-xl border border-slate-200">
+                    <button onclick="adjustZoom(-0.1)" class="p-1 rounded-lg hover:bg-white text-slate-700 transition" title="Zoom Out">
+                        <i data-lucide="zoom-out" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <span id="zoomLevelText" class="text-xs font-semibold text-slate-700 w-11 text-center">85%</span>
+                    <button onclick="adjustZoom(0.1)" class="p-1 rounded-lg hover:bg-white text-slate-700 transition" title="Zoom In">
+                        <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button onclick="autoFitZoom()" class="px-2 py-0.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-[11px] font-semibold text-slate-700 transition">
+                        Fit
+                    </button>
+                </div>
+            </div>
+
+            <!-- Custom Layout Editing Toolbar (Visible when Template 4 has an uploaded cover) -->
+            <div id="customLayoutToolbar" class="no-print hidden bg-amber-50/95 border-b border-amber-200 px-4 py-2 flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-xs font-semibold text-slate-800">
+                        <i data-lucide="file-check" class="w-3.5 h-3.5 text-[#7A001E]"></i>
+                        <span id="customLayoutFileName">Uploaded Cover</span>
+                    </span>
+                    <button onclick="openCustomLayoutModal()" class="px-2.5 py-1 rounded-lg bg-white hover:bg-amber-100 border border-amber-300 text-xs font-medium text-slate-700 transition">
+                        Replace File
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <button id="addOverlayFieldBtn" onclick="addCustomOverlayField()" class="px-2.5 py-1 rounded-lg bg-[#7A001E] hover:bg-[#5e0017] text-white text-xs font-semibold transition flex items-center gap-1" title="Add a new editable text box (or double-click anywhere on the cover)">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                        <span>Add Text</span>
+                    </button>
+                    <button id="syncSidebarFieldsBtn" onclick="populateSidebarOverlayFields()" class="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-xs font-medium text-slate-700 transition flex items-center gap-1" title="Insert sidebar form fields onto cover">
+                        <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                        <span>Insert Form Info</span>
+                    </button>
+                    <button id="toggleWhiteoutBtn" onclick="toggleSelectedWhiteout()" class="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-xs font-medium text-slate-700 transition flex items-center gap-1" title="Toggle opaque white background behind selected text box to cover printed text on images">
+                        <i data-lucide="eraser" class="w-3 h-3 text-slate-600"></i>
+                        <span>Whiteout Bg</span>
+                    </button>
+
+                    <div class="h-4 w-px bg-amber-300 mx-0.5"></div>
+
+                    <select id="overlayFontFamily" onchange="applyCustomStyle('fontFamily', this.value)" class="px-2 py-1 rounded-lg bg-white border border-slate-300 text-xs text-slate-700">
+                        <option value="'Times New Roman', serif">Times New Roman</option>
+                        <option value="Georgia, serif">Georgia</option>
+                        <option value="'Playfair Display', serif">Playfair Display</option>
+                        <option value="Arial, sans-serif">Arial</option>
+                        <option value="'Inter', sans-serif">Inter</option>
+                    </select>
+
+                    <input id="overlayFontSize" type="number" min="8" max="96" value="16" onchange="applyCustomStyle('fontSize', this.value + 'px')" class="w-14 px-2 py-1 rounded-lg bg-white border border-slate-300 text-xs text-slate-700" title="Font Size (px)">
+
+                    <button onclick="toggleCustomBold()" class="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-xs font-bold text-slate-800" title="Bold">B</button>
+                    <button onclick="toggleCustomItalic()" class="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-xs italic font-serif text-slate-800" title="Italic">I</button>
+
+                    <input id="overlayColorPicker" type="color" value="#0f172a" onchange="applyCustomStyle('color', this.value)" class="w-7 h-7 p-0.5 rounded-lg bg-white border border-slate-300 cursor-pointer" title="Text Color">
+
+                    <button onclick="applyCustomAlign('left')" class="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700" title="Align Left">
+                        <i data-lucide="align-left" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button onclick="applyCustomAlign('center')" class="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700" title="Align Center">
+                        <i data-lucide="align-center" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button onclick="applyCustomAlign('right')" class="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700" title="Align Right">
+                        <i data-lucide="align-right" class="w-3.5 h-3.5"></i>
+                    </button>
+
+                    <button id="deleteOverlayBtn" onclick="deleteSelectedOverlay()" class="p-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 transition" title="Delete Selected Text Box">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scrollable Stage for A4 Sheet -->
+            <div id="previewScrollArea" class="flex-1 overflow-auto p-6 sm:p-10 flex justify-center items-start">
+                <div id="a4ScaleWrapper" style="transform-origin: center top;">
+
+                    <!-- =========================================================
+                         TEMPLATE 1: CLASSIC MODERN ACADEMIC (Cream, Navy, Crimson & Gold)
+                         ========================================================= -->
+                    <div id="template1" class="a4-page" style="display: flex; flex-direction: column; background: #FBF7F1; font-family: 'Inter', sans-serif; color: #14213D;">
+                        <!-- Top Crimson & Gold Bar -->
+                        <div style="height: 14px; background: #7A1618; display: flex; flex-shrink: 0;">
+                            <div style="width: 140px; background: #C9A227;"></div>
+                        </div>
+
+                        <!-- White Header with Logo & Semester -->
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 32px 56px 26px 56px; background: #FFFFFF; flex-shrink: 0;">
+                            <img id="prev1-logo" alt="University of Information Technology and Sciences logo" style="width: 270px; height: auto; display: block;">
+                            <div style="text-align: right;">
+                                <div style="font-size: 12px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; color: #5B5B66;">Semester</div>
+                                <div id="prev1-semester" contenteditable="true" style="margin-top: 4px; font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 700; color: #7A1618;">Autumn 2026</div>
+                            </div>
+                        </div>
+
+                        <!-- Deep Navy Course Hero Block -->
+                        <div style="position: relative; overflow: hidden; background: #14213D; color: #FFFFFF; padding: 50px 56px 54px 56px; flex-shrink: 0;">
+                            <div style="position: absolute; right: -70px; top: -70px; width: 260px; height: 260px; border-radius: 50%; background: #7A1618; pointer-events: none;"></div>
+                            <div style="position: absolute; right: 56px; bottom: -48px; width: 130px; height: 130px; box-sizing: border-box; border-radius: 50%; border: 14px solid #C9A227; pointer-events: none;"></div>
+                            <div contenteditable="true" style="position: relative; display: inline-block; padding: 9px 20px; border-radius: 999px; background: #C9A227; color: #14213D; font-size: 15px; font-weight: 700; letter-spacing: 2px;">
+                                COURSE CODE · <span id="prev1-courseCode">CSE0611215</span>
+                            </div>
+                            <div style="position: relative; margin-top: 26px; font-size: 13px; font-weight: 600; letter-spacing: 4px; text-transform: uppercase; color: #E9D9A6;">Course Title</div>
+                            <h1 id="prev1-courseTitle" contenteditable="true" style="position: relative; margin: 8px 0 0 0; font-family: 'Playfair Display', serif; font-size: 54px; font-weight: 800; line-height: 1.08;">Digital Logic Design</h1>
+                        </div>
+
+                        <!-- Crimson Document Type Banner + Gold Rule -->
+                        <div style="background: #7A1618; color: #FFFFFF; text-align: center; padding: 20px 56px; flex-shrink: 0;">
+                            <div id="prev1-docType" contenteditable="true" style="font-family: 'Playfair Display', serif; font-size: 40px; font-weight: 700; letter-spacing: 1px;">Lab Assignment</div>
+                        </div>
+                        <div style="height: 5px; background: #C9A227; flex-shrink: 0;"></div>
+
+                        <!-- Two-Column Elevated Submission Cards -->
+                        <div style="flex: 1; display: flex; align-items: center; padding: 0 56px;">
+                            <div style="width: 100%; display: flex; gap: 24px;">
+                                <!-- Submitted To Card -->
+                                <div style="flex: 1; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 6px 18px rgba(20, 33, 61, 0.14);">
+                                    <div style="padding: 12px 24px; background: #14213D; color: #FFFFFF; font-size: 13px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;">Submitted to</div>
+                                    <div style="padding: 22px 24px;">
+                                        <div id="prev1-teacherName" contenteditable="true" style="font-family: 'Playfair Display', serif; font-size: 25px; font-weight: 700; color: #7A1618;">Farah Ulfat Zaima</div>
+                                        <div id="prev1-teacherDesig" contenteditable="true" style="margin-top: 8px; font-size: 16px; font-weight: 600; color: #3A3A46;">Lecturer</div>
+                                        <div id="prev1-teacherDept" contenteditable="true" style="margin-top: 4px; font-size: 15px; font-weight: 600; color: #3A3A46;">Department of CSE</div>
+                                    </div>
+                                </div>
+
+                                <!-- Submitted By Card -->
+                                <div style="flex: 1; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 6px 18px rgba(20, 33, 61, 0.14);">
+                                    <div style="padding: 12px 24px; background: #7A1618; color: #FFFFFF; font-size: 13px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;">Submitted by</div>
+                                    <div style="padding: 22px 24px;">
+                                        <div id="prev1-studentName" contenteditable="true" style="font-family: 'Playfair Display', serif; font-size: 25px; font-weight: 700; color: #14213D;">Tanvir Ahmed</div>
+                                        <div contenteditable="true" style="margin-top: 8px; font-size: 16px; font-weight: 600; color: #3A3A46;">ID: <span id="prev1-studentId">04324105101042</span></div>
+                                        <div id="prev1-section" contenteditable="true" style="margin-top: 4px; font-size: 15px; font-weight: 600; color: #3A3A46;">Section: 2A</div>
+                                        <div id="prev1-dept" contenteditable="true" style="margin-top: 4px; font-size: 16px; font-weight: 600; color: #3A3A46;">Department of CSE</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bottom University Name & Date -->
+                        <div style="text-align: center; padding: 0 56px 30px 56px; flex-shrink: 0;">
+                            <div style="width: 80px; height: 4px; margin: 0 auto 16px auto; background: #C9A227;"></div>
+                            <div contenteditable="true" style="font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 700; line-height: 1.2; color: #14213D;">University of Information Technology and Sciences</div>
+                            <div id="prev1-date" contenteditable="true" style="margin-top: 10px; font-size: 17px; font-weight: 700; letter-spacing: 1px; color: #7A1618;">21 November, 2026</div>
+                        </div>
+
+                        <!-- Bottom Navy & Gold Bar -->
+                        <div style="height: 18px; background: #14213D; display: flex; justify-content: flex-end; flex-shrink: 0;">
+                            <div style="width: 140px; background: #C9A227;"></div>
+                        </div>
+                    </div>
+
+                    <!-- =========================================================
+                         TEMPLATE 2: SIMPLE FRAMED BASKERVILLE CLEAN
+                         ========================================================= -->
+                    <div id="template2" class="a4-page hidden" style="padding: 28px; background: #FFFFFF; font-family: 'Libre Baskerville', serif; color: #1A1A1A;">
+                        <div style="height: 100%; box-sizing: border-box; border: 1.5px solid #7A1618; padding: 52px 64px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; text-align: center;">
+                            <!-- Logo -->
+                            <img id="prev2-logo" alt="University of Information Technology and Sciences logo" style="width: 300px; height: auto; display: block;">
+
+                            <!-- Course Code & Title -->
+                            <div>
+                                <div contenteditable="true" style="font-size: 16px; color: #444444;">Course Code: <span id="prev2-courseCode">CSE0611215</span></div>
+                                <div contenteditable="true" style="margin-top: 8px; font-size: 24px; font-weight: 700;">Course Title: <span id="prev2-courseTitle">Digital Logic Design</span></div>
+                            </div>
+
+                            <!-- Document Title -->
+                            <div id="prev2-docType" contenteditable="true" style="font-size: 44px; font-weight: 700; color: #7A1618; padding-bottom: 10px; border-bottom: 2px solid #7A1618;">Lab Assignment</div>
+
+                            <!-- Centered Submission Blocks -->
+                            <div style="display: flex; flex-direction: column; gap: 36px;">
+                                <div>
+                                    <div style="font-size: 13px; letter-spacing: 3px; text-transform: uppercase; color: #555555;">Submitted to</div>
+                                    <div id="prev2-teacherName" contenteditable="true" style="margin-top: 10px; font-size: 22px; font-weight: 700;">Farah Ulfat Zaima</div>
+                                    <div id="prev2-teacherDesig" contenteditable="true" style="margin-top: 4px; font-size: 16px; color: #444444;">Lecturer</div>
+                                    <div id="prev2-teacherDept" contenteditable="true" style="margin-top: 4px; font-size: 15px; color: #444444;">Department of CSE</div>
+                                </div>
+
+                                <div>
+                                    <div style="font-size: 13px; letter-spacing: 3px; text-transform: uppercase; color: #555555;">Submitted by</div>
+                                    <div id="prev2-studentName" contenteditable="true" style="margin-top: 10px; font-size: 22px; font-weight: 700;">Tanvir Ahmed</div>
+                                    <div contenteditable="true" style="margin-top: 4px; font-size: 16px; color: #444444;">ID: <span id="prev2-studentId">04324105101042</span></div>
+                                    <div id="prev2-section" contenteditable="true" style="margin-top: 4px; font-size: 15px; color: #444444;">Section: 2A</div>
+                                    <div id="prev2-dept" contenteditable="true" style="margin-top: 4px; font-size: 16px; color: #444444;">Department of CSE</div>
+                                    <div id="prev2-semester" contenteditable="true" style="margin-top: 4px; font-size: 16px; color: #444444;">Autumn 2026</div>
+                                </div>
+                            </div>
+
+                            <!-- University & Date -->
+                            <div>
+                                <div contenteditable="true" style="font-size: 22px; font-weight: 700;">University of Information Technology and Sciences</div>
+                                <div id="prev2-date" contenteditable="true" style="margin-top: 10px; font-size: 16px; color: #444444;">21 November, 2026</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- =========================================================
+                         TEMPLATE 3: PROFESSIONAL TRI-STRIPE SPINE
+                         ========================================================= -->
+                    <div id="template3" class="a4-page hidden" style="display: flex; background: #FFFFFF; font-family: 'Source Sans 3', sans-serif; color: #10213F;">
+                        <!-- Left Tri-Stripe Spine -->
+                        <div style="width: 40px; background: #10213F; flex-shrink: 0;"></div>
+                        <div style="width: 10px; background: #7A1618; flex-shrink: 0;"></div>
+                        <div style="width: 3px; background: #C9A227; flex-shrink: 0;"></div>
+
+                        <!-- Main Cover Content -->
+                        <div style="flex: 1; box-sizing: border-box; padding: 60px 64px 56px 64px; display: flex; flex-direction: column; justify-content: space-between;">
+                            <img id="prev3-logo" alt="University of Information Technology and Sciences logo" style="width: 280px; height: auto; display: block;">
+
+                            <div>
+                                <div id="prev3-semester" contenteditable="true" style="font-size: 14px; font-weight: 600; letter-spacing: 4px; text-transform: uppercase; color: #7A1618;">Autumn 2026</div>
+                                <h1 id="prev3-docType" contenteditable="true" style="margin: 12px 0 0 0; font-family: 'Merriweather', serif; font-size: 54px; font-weight: 900; line-height: 1.1; color: #10213F;">Lab Assignment</h1>
+                                <div style="width: 64px; height: 5px; margin-top: 20px; background: #C9A227;"></div>
+                            </div>
+
+                            <div style="border-top: 1px solid #D5D8DF;">
+                                <div style="display: flex; align-items: baseline; padding: 16px 0; border-bottom: 1px solid #D5D8DF;">
+                                    <div style="width: 150px; font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: #5A6070;">Course Code</div>
+                                    <div id="prev3-courseCode" contenteditable="true" style="font-size: 22px; font-weight: 700;">CSE0611215</div>
+                                </div>
+                                <div style="display: flex; align-items: baseline; padding: 16px 0; border-bottom: 1px solid #D5D8DF;">
+                                    <div style="width: 150px; font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: #5A6070;">Course Title</div>
+                                    <div id="prev3-courseTitle" contenteditable="true" style="font-family: 'Merriweather', serif; font-size: 24px; font-weight: 700;">Digital Logic Design</div>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; gap: 40px;">
+                                <div style="flex: 1; padding-top: 16px; border-top: 4px solid #10213F;">
+                                    <div style="font-size: 13px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #10213F;">Submitted to</div>
+                                    <div id="prev3-teacherName" contenteditable="true" style="margin-top: 12px; font-family: 'Merriweather', serif; font-size: 22px; font-weight: 700;">Farah Ulfat Zaima</div>
+                                    <div id="prev3-teacherDesig" contenteditable="true" style="margin-top: 6px; font-size: 17px; color: #3B4252;">Lecturer</div>
+                                    <div id="prev3-teacherDept" contenteditable="true" style="margin-top: 4px; font-size: 16px; color: #3B4252;">Department of CSE</div>
+                                </div>
+
+                                <div style="flex: 1; padding-top: 16px; border-top: 4px solid #7A1618;">
+                                    <div style="font-size: 13px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #7A1618;">Submitted by</div>
+                                    <div id="prev3-studentName" contenteditable="true" style="margin-top: 12px; font-family: 'Merriweather', serif; font-size: 22px; font-weight: 700;">Tanvir Ahmed</div>
+                                    <div contenteditable="true" style="margin-top: 6px; font-size: 17px; color: #3B4252;">ID: <span id="prev3-studentId">04324105101042</span></div>
+                                    <div id="prev3-section" contenteditable="true" style="margin-top: 2px; font-size: 16px; color: #3B4252;">Section: 2A</div>
+                                    <div id="prev3-dept" contenteditable="true" style="margin-top: 2px; font-size: 17px; color: #3B4252;">Department of CSE</div>
+                                </div>
+                            </div>
+
+                            <div style="padding-top: 20px; border-top: 1px solid #D5D8DF;">
+                                <div contenteditable="true" style="font-family: 'Merriweather', serif; font-size: 20px; font-weight: 700; line-height: 1.35;">University of Information Technology and Sciences</div>
+                                <div id="prev3-date" contenteditable="true" style="margin-top: 8px; font-size: 17px; font-weight: 600; color: #7A1618;">21 November, 2026</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- =========================================================
+                         TEMPLATE 4: CUSTOM UPLOADED COVER PAGE (JPG/PNG/PDF/DOCX)
+                         ========================================================= -->
+                    <div id="template4" class="a4-page hidden">
+                        <!-- Empty State before upload (Supports click + drag & drop) -->
+                        <div id="customEmptyState"
+                             ondragover="event.preventDefault(); this.classList.add('border-[#7A001E]', 'bg-rose-50/40');"
+                             ondragleave="this.classList.remove('border-[#7A001E]', 'bg-rose-50/40');"
+                             ondrop="handleCustomDrop(event)"
+                             class="w-full h-full flex flex-col items-center justify-center p-12 text-center bg-slate-50 border-2 border-dashed border-slate-300 transition">
+                            <div class="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-[#7A001E] mb-4">
+                                <i data-lucide="file-up" class="w-8 h-8"></i>
+                            </div>
+                            <h2 class="text-xl font-bold text-slate-900">Upload Your Own Cover Page</h2>
+                            <p class="text-sm text-slate-600 max-w-md mt-2">
+                                Drag &amp; drop or choose any cover page in <strong>JPG, JPEG, PNG, PDF, or DOCX</strong> format. Every text line becomes directly editable on the A4 sheet.
+                            </p>
+                            <button onclick="openCustomLayoutModal()" class="mt-6 px-5 py-2.5 rounded-xl bg-[#7A001E] hover:bg-[#5e0017] text-white text-sm font-semibold shadow-sm transition flex items-center gap-2">
+                                <i data-lucide="upload" class="w-4 h-4"></i>
+                                <span>Choose Cover File</span>
+                            </button>
+                        </div>
+
+                        <!-- Image / PDF Background Stage with Directly Editable & Draggable Text Boxes -->
+                        <div id="customCanvasStage" class="hidden w-full h-full relative bg-white">
+                            <img id="customBgImage" alt="Uploaded Cover Page" class="hidden w-full h-full object-fill select-none pointer-events-none">
+                            <canvas id="customPdfCanvas" class="hidden w-full h-full block select-none pointer-events-none"></canvas>
+                            <div id="customOverlaysLayer" ondblclick="handleStageDoubleClick(event)" class="absolute inset-0 z-10"></div>
+                        </div>
+
+                        <!-- DOCX Direct Editable Stage -->
+                        <div id="customDocxStage" class="hidden w-full h-full bg-white">
+                            <div id="customDocxEditor" contenteditable="true"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Custom Cover Upload Modal -->
+    <div id="customLayoutModal" class="no-print fixed inset-0 z-50 hidden bg-slate-900/50 backdrop-blur-xs items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-rose-50 text-[#7A001E] flex items-center justify-center">
+                        <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900">Upload Custom Cover Page</h3>
+                        <p class="text-xs text-slate-500">Supports JPG, JPEG, PNG, PDF, and DOCX</p>
+                    </div>
+                </div>
+                <button onclick="closeCustomLayoutModal()" class="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <div onclick="triggerCustomFilePicker()"
+                 ondragover="event.preventDefault(); this.classList.add('border-[#7A001E]', 'bg-rose-50/40');"
+                 ondragleave="this.classList.remove('border-[#7A001E]', 'bg-rose-50/40');"
+                 ondrop="handleCustomDrop(event)"
+                 class="cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 hover:border-[#7A001E] hover:bg-rose-50/30 p-7 text-center transition">
+                <i data-lucide="file-plus-2" class="w-10 h-10 text-[#7A001E] mx-auto mb-3"></i>
+                <p class="text-sm font-semibold text-slate-800">Click or drag &amp; drop your cover file here</p>
+                <p class="text-xs text-slate-500 mt-1">.jpg, .jpeg, .png, .pdf, or .docx</p>
+            </div>
+
+            <div class="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600 space-y-1">
+                <div><strong>• PDF:</strong> Automatically extracts every text line on the page so you can click &amp; edit text directly in place.</div>
+                <div><strong>• JPG / PNG:</strong> Displays your image at A4 size—double-click anywhere or click <em>Add Text</em> (with optional <em>Whiteout Bg</em>) to edit over it.</div>
+                <div><strong>• DOCX:</strong> Opens your Word cover page directly as an editable A4 document.</div>
+            </div>
+
+            <input id="customCoverFileInput" type="file" accept=".jpg,.jpeg,.png,.pdf,.docx,image/jpeg,image/png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="handleCustomCoverUpload(event)" class="hidden">
+
+            <div class="flex justify-end gap-2 pt-1">
+                <button onclick="closeCustomLayoutModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    Cancel
+                </button>
+                <button onclick="triggerCustomFilePicker()" class="px-4 py-2 rounded-xl bg-[#7A001E] hover:bg-[#5e0017] text-white text-xs font-semibold">
+                    Browse File
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Non-blocking Toast Message -->
+    <div id="toastBanner" class="no-print fixed bottom-5 right-5 z-50 hidden items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-medium shadow-xl">
+        <i data-lucide="info" class="w-4 h-4 text-amber-400"></i>
+        <span id="toastText">Ready</span>
+    </div>
+
+    <script>
+        // Configure PDF.js worker
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
+        // Exact Default UITS Crest + Wordmark Vector Logo
+        const UITS_LOGO_SVG = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 215" width="640" height="215">
+            <!-- Outer Shield Border -->
+            <path d="M18 14 H168 V116 C168 164 132 192 93 204 C54 192 18 164 18 116 Z" fill="#ffffff" stroke="#1e293b" stroke-width="3.5"/>
+            <path d="M24 20 H162 V115 C162 159 128 185 93 197 C58 185 24 159 24 115 Z" fill="none" stroke="#1e293b" stroke-width="1.5"/>
+
+            <!-- Shield Side Micro Text -->
+            <text x="33" y="106" font-family="Arial, sans-serif" font-size="8.2" font-weight="800" fill="#0f172a" transform="rotate(-90 33 106)" text-anchor="middle" letter-spacing="0.4">UNIVERSITY OF INFORMATION</text>
+            <text x="153" y="106" font-family="Arial, sans-serif" font-size="8.2" font-weight="800" fill="#0f172a" transform="rotate(90 153 106)" text-anchor="middle" letter-spacing="0.4">TECHNOLOGY AND SCIENCES</text>
+
+            <!-- Inner UITS Maroon Header inside Shield -->
+            <text x="93" y="53" font-family="Arial Black, Arial, sans-serif" font-size="33" font-weight="900" fill="#7A1618" text-anchor="middle" letter-spacing="1.5">UITS</text>
+
+            <!-- 5 Maroon Stars -->
+            <polygon points="93,59 95,64 100,64 96,67 97.5,72 93,69 88.5,72 90,67 86,64 91,64" fill="#7A1618"/>
+            <circle cx="77" cy="67" r="2.3" fill="#7A1618"/>
+            <circle cx="65" cy="70" r="1.9" fill="#7A1618"/>
+            <circle cx="109" cy="67" r="2.3" fill="#7A1618"/>
+            <circle cx="121" cy="70" r="1.9" fill="#7A1618"/>
+
+            <!-- Flame Torch -->
+            <path d="M93 74 C98 81 101 87 96 93 C95 89 93 88 92 92 C88 88 89 81 93 74 Z" fill="#7A1618"/>
+            <path d="M87 83 C84 88 86 94 91 96 C89 92 89 87 87 83 Z" fill="#7A1618"/>
+            <path d="M99 83 C102 88 100 94 95 96 C97 92 97 87 99 83 Z" fill="#7A1618"/>
+
+            <!-- Open Navy Book -->
+            <path d="M62 96 L91 103 V137 L62 130 Z" fill="#10213F"/>
+            <path d="M124 96 L95 103 V137 L124 130 Z" fill="#10213F"/>
+            <path d="M56 100 L60 101 V133 L91 140 L56 134 Z" fill="#10213F"/>
+            <path d="M130 100 L126 101 V133 L95 140 L130 134 Z" fill="#10213F"/>
+
+            <!-- Laurel Wreath Arcs -->
+            <path d="M50 112 C48 144 65 166 84 173" fill="none" stroke="#7A1618" stroke-width="3" stroke-dasharray="4 4"/>
+            <path d="M136 112 C138 144 121 166 102 173" fill="none" stroke="#7A1618" stroke-width="3" stroke-dasharray="4 4"/>
+            <text x="93" y="182" font-family="Arial, sans-serif" font-size="10.5" font-weight="800" fill="#7A1618" text-anchor="middle">2003</text>
+
+            <!-- Right Large Wordmark: UITS -->
+            <text x="190" y="122" font-family="Arial Black, Impact, Arial, sans-serif" font-size="136" font-weight="900" fill="#7A1618" letter-spacing="4">UITS</text>
+
+            <!-- Divider Rule -->
+            <line x1="194" y1="138" x2="622" y2="138" stroke="#475569" stroke-width="2"/>
+
+            <!-- Subtitle Lines -->
+            <text x="194" y="168" font-family="Arial, Helvetica, sans-serif" font-size="25.5" font-weight="800" fill="#111827" letter-spacing="0.8">UNIVERSITY OF INFORMATION</text>
+            <text x="194" y="198" font-family="Arial, Helvetica, sans-serif" font-size="25.5" font-weight="800" fill="#111827" letter-spacing="0.8">TECHNOLOGY AND SCIENCES</text>
+        </svg>`;
+
+        const DEFAULT_LOGO_URL = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(UITS_LOGO_SVG.trim());
+
+        let activeTemplate = 1;
+        let currentZoom = 0.72;
+        let customLayoutMode = null; // 'image' | 'pdf' | 'docx'
+        let customUploadedFileName = '';
+        let selectedOverlayId = null;
+        let overlayCounter = 0;
+        let toastTimer = null;
+
+        // Show non-blocking notification toast
+        function showToast(message) {
+            const banner = document.getElementById('toastBanner');
+            const text = document.getElementById('toastText');
+            text.textContent = message;
+            banner.classList.remove('hidden');
+            banner.classList.add('flex');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                banner.classList.add('hidden');
+                banner.classList.remove('flex');
+            }, 3800);
+        }
+
+        // Format YYYY-MM-DD to "DD Month, YYYY"
+        function formatDisplayDate(dateStr) {
+            if (!dateStr) return '';
+            const parts = dateStr.split('-');
+            if (parts.length !== 3) return dateStr;
+            const months = [
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+            const year = parts[0];
+            const month = months[parseInt(parts[1], 10) - 1] || '';
+            const day = parseInt(parts[2], 10);
+            return `${day} ${month}, ${year}`;
+        }
+
+        // Set default submission date to today
+        function setDefaultDate() {
+            const dateInput = document.getElementById('inputDate');
+            if (!dateInput.value) {
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                dateInput.value = `${yyyy}-${mm}-${dd}`;
+            }
+        }
+
+        // Handle Custom University Logo Upload
+        function handleLogoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const url = e.target.result;
+                document.getElementById('logoPreviewThumb').src = url;
+                document.getElementById('prev1-logo').src = url;
+                document.getElementById('prev2-logo').src = url;
+                document.getElementById('prev3-logo').src = url;
+                showToast('Custom university logo applied.');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Reset to Default UITS Logo
+        function resetLogo() {
+            document.getElementById('logoPreviewThumb').src = DEFAULT_LOGO_URL;
+            document.getElementById('prev1-logo').src = DEFAULT_LOGO_URL;
+            document.getElementById('prev2-logo').src = DEFAULT_LOGO_URL;
+            document.getElementById('prev3-logo').src = DEFAULT_LOGO_URL;
+            showToast('Reset to default UITS logo.');
+        }
+
+        // Switch between Template 1, 2, 3, and 4 (Custom Uploaded Layout)
+        function setTemplate(tplNum) {
+            activeTemplate = tplNum;
+            const t1 = document.getElementById('template1');
+            const t2 = document.getElementById('template2');
+            const t3 = document.getElementById('template3');
+            const t4 = document.getElementById('template4');
+            const b1 = document.getElementById('tplBtn1');
+            const b2 = document.getElementById('tplBtn2');
+            const b3 = document.getElementById('tplBtn3');
+            const b4 = document.getElementById('tplBtn4');
+            const customToolbar = document.getElementById('customLayoutToolbar');
+
+            t1.style.display = 'none';
+            t2.style.display = 'none';
+            t3.style.display = 'none';
+            t4.style.display = 'none';
+            t1.classList.add('hidden');
+            t2.classList.add('hidden');
+            t3.classList.add('hidden');
+            t4.classList.add('hidden');
+
+            [b1, b2, b3].forEach(btn => {
+                btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 text-slate-600 hover:bg-slate-100";
+            });
+            b4.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 text-slate-700 bg-amber-50 hover:bg-amber-100 border border-amber-300";
+
+            if (tplNum === 1) {
+                t1.classList.remove('hidden');
+                t1.style.display = 'flex';
+                b1.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-[#7A001E] text-white shadow-sm";
+                customToolbar.classList.add('hidden');
+                customToolbar.classList.remove('flex');
+            } else if (tplNum === 2) {
+                t2.classList.remove('hidden');
+                t2.style.display = 'block';
+                b2.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-[#1C2A4A] text-white shadow-sm";
+                customToolbar.classList.add('hidden');
+                customToolbar.classList.remove('flex');
+            } else if (tplNum === 3) {
+                t3.classList.remove('hidden');
+                t3.style.display = 'flex';
+                b3.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-[#D3112B] text-white shadow-sm";
+                customToolbar.classList.add('hidden');
+                customToolbar.classList.remove('flex');
+            } else if (tplNum === 4) {
+                t4.classList.remove('hidden');
+                t4.style.display = 'block';
+                b4.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-[#7A001E] text-white shadow-sm border border-[#7A001E]";
+                if (customLayoutMode) {
+                    customToolbar.classList.remove('hidden');
+                    customToolbar.classList.add('flex');
+                } else {
+                    customToolbar.classList.add('hidden');
+                    customToolbar.classList.remove('flex');
+                }
+            }
+        }
+
+        // Top bar "4. + Upload Layout" click handler
+        function handleUploadLayoutBtnClick() {
+            setTemplate(4);
+            if (!customLayoutMode) {
+                openCustomLayoutModal();
+            }
+        }
+
+        // Open Custom Cover Upload Modal
+        function openCustomLayoutModal() {
+            setTemplate(4);
+            const modal = document.getElementById('customLayoutModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            lucide.createIcons();
+        }
+
+        function closeCustomLayoutModal() {
+            const modal = document.getElementById('customLayoutModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function triggerCustomFilePicker() {
+            document.getElementById('customCoverFileInput').click();
+        }
+
+        function handleCustomDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('border-[#7A001E]', 'bg-rose-50/40');
+            const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+            if (file) {
+                processCustomCoverFile(file);
+            }
+        }
+
+        // Handle uploaded .jpg, .jpeg, .png, .pdf, or .docx cover page
+        function handleCustomCoverUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            processCustomCoverFile(file);
+            event.target.value = '';
+        }
+
+        // Convert RGB array to hex string
+        function rgbToHex(r, g, b) {
+            return '#' + [r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
+        }
+
+        // Extract text lines from PDF.js Page 1, mask original raster text cleanly, and create directly editable overlays
+        async function extractAndRenderEditablePdfPage(page, pdfCanvas, ctx, fitScale, offsetX, offsetY, renderScale) {
+            const cssViewport = page.getViewport({ scale: fitScale });
+            const textContent = await page.getTextContent();
+            const styles = textContent.styles || {};
+
+            // Capture rendered canvas pixels to sample local background & foreground text colors
+            const fullImageData = ctx.getImageData(0, 0, pdfCanvas.width, pdfCanvas.height);
+            const data = fullImageData.data;
+            const canvasW = pdfCanvas.width;
+            const canvasH = pdfCanvas.height;
+
+            function samplePixel(px, py) {
+                const cx = Math.max(0, Math.min(canvasW - 1, Math.round(px)));
+                const cy = Math.max(0, Math.min(canvasH - 1, Math.round(py)));
+                const idx = (cy * canvasW + cx) * 4;
+                return [data[idx], data[idx + 1], data[idx + 2]];
+            }
+
+            // Convert PDF text items into normalized A4 (794x1123) items
+            const rawItems = [];
+            for (const item of textContent.items) {
+                if (!item.str || !item.str.trim()) continue;
+                const tx = pdfjsLib.Util.transform(cssViewport.transform, item.transform);
+                const fontHeight = Math.max(8, Math.hypot(tx[2], tx[3]));
+                const x = tx[4] + offsetX;
+                const baselineY = tx[5] + offsetY;
+                const topY = baselineY - fontHeight * 0.86;
+                const width = Math.max(10, (item.width || (item.str.length * fontHeight * 0.5)) * fitScale);
+                const styleInfo = styles[item.fontName] || {};
+                const fontDesc = ((styleInfo.fontFamily || '') + ' ' + (item.fontName || '')).toLowerCase();
+                const isSerif = /times|georgia|serif|baskerville|playfair|merriweather|garamond|cambria/.test(fontDesc);
+                const isBold = /bold|black|heavy|700|800|900/.test(fontDesc);
+
+                rawItems.push({
+                    str: item.str,
+                    x,
+                    topY,
+                    baselineY,
+                    width,
+                    fontHeight,
+                    isSerif,
+                    isBold
+                });
+            }
+
+            if (rawItems.length === 0) {
+                return 0;
+            }
+
+            // Sort top-to-bottom, then left-to-right
+            rawItems.sort((a, b) => {
+                if (Math.abs(a.baselineY - b.baselineY) > 4) {
+                    return a.baselineY - b.baselineY;
+                }
+                return a.x - b.x;
+            });
+
+            // Merge text runs that sit on the same horizontal line
+            const mergedLines = [];
+            for (const item of rawItems) {
+                const prev = mergedLines[mergedLines.length - 1];
+                if (
+                    prev &&
+                    Math.abs(item.baselineY - prev.baselineY) <= Math.max(4, item.fontHeight * 0.3) &&
+                    (item.x - (prev.x + prev.width)) <= Math.max(28, item.fontHeight * 1.8) &&
+                    (item.x - prev.x) >= -10
+                ) {
+                    const gap = item.x - (prev.x + prev.width);
+                    const needsSpace = gap > item.fontHeight * 0.18 && !prev.str.endsWith(' ') && !item.str.startsWith(' ');
+                    prev.str += (needsSpace ? ' ' : '') + item.str;
+                    prev.width = Math.max(prev.width, (item.x + item.width) - prev.x);
+                    prev.topY = Math.min(prev.topY, item.topY);
+                    prev.fontHeight = Math.max(prev.fontHeight, item.fontHeight);
+                    prev.isBold = prev.isBold || item.isBold;
+                } else {
+                    mergedLines.push({ ...item });
+                }
+            }
+
+            const layer = document.getElementById('customOverlaysLayer');
+            layer.innerHTML = '';
+
+            for (const line of mergedLines) {
+                // Sample background color just outside top-left of the text bounding box
+                const bgSamples = [
+                    samplePixel((line.x - 3) * renderScale, (line.topY - 2) * renderScale),
+                    samplePixel((line.x - 3) * renderScale, (line.topY + line.fontHeight * 0.5) * renderScale),
+                    samplePixel((line.x + line.width + 3) * renderScale, (line.topY - 2) * renderScale)
+                ];
+                const bgR = Math.round((bgSamples[0][0] + bgSamples[1][0] + bgSamples[2][0]) / 3);
+                const bgG = Math.round((bgSamples[0][1] + bgSamples[1][1] + bgSamples[2][1]) / 3);
+                const bgB = Math.round((bgSamples[0][2] + bgSamples[1][2] + bgSamples[2][2]) / 3);
+                const bgHex = rgbToHex(bgR, bgG, bgB);
+
+                // Find highest-contrast pixel inside the text bounding box as the foreground text color
+                let bestDist = -1;
+                let fgRgb = [15, 23, 42];
+                const xStart = Math.max(0, Math.floor(line.x * renderScale));
+                const xEnd = Math.min(canvasW - 1, Math.ceil((line.x + line.width) * renderScale));
+                const yStart = Math.max(0, Math.floor(line.topY * renderScale));
+                const yEnd = Math.min(canvasH - 1, Math.ceil((line.topY + line.fontHeight) * renderScale));
+                const stepX = Math.max(1, Math.floor((xEnd - xStart) / 40));
+                const stepY = Math.max(1, Math.floor((yEnd - yStart) / 16));
+
+                for (let py = yStart; py <= yEnd; py += stepY) {
+                    for (let px = xStart; px <= xEnd; px += stepX) {
+                        const idx = (py * canvasW + px) * 4;
+                        const dr = data[idx] - bgR;
+                        const dg = data[idx + 1] - bgG;
+                        const db = data[idx + 2] - bgB;
+                        const dist = dr * dr + dg * dg + db * db;
+                        if (dist > bestDist) {
+                            bestDist = dist;
+                            fgRgb = [data[idx], data[idx + 1], data[idx + 2]];
+                        }
+                    }
+                }
+
+                // Mask out the original raster text on the canvas with the sampled local background color
+                ctx.fillStyle = bgHex;
+                ctx.fillRect(
+                    Math.max(0, (line.x - 2) * renderScale),
+                    Math.max(0, (line.topY - 1) * renderScale),
+                    (line.width + 6) * renderScale,
+                    (line.fontHeight * 1.24) * renderScale
+                );
+
+                // Create an editable, draggable overlay text box in the exact position
+                createOverlayElement({
+                    text: line.str,
+                    x: Math.max(4, Math.round(line.x - 5)),
+                    y: Math.max(4, Math.round(line.topY - 3)),
+                    fontSize: Math.round(line.fontHeight) + 'px',
+                    fontWeight: line.isBold ? 'bold' : 'normal',
+                    color: rgbToHex(fgRgb[0], fgRgb[1], fgRgb[2]),
+                    fontFamily: line.isSerif ? "'Times New Roman', serif" : "Arial, sans-serif",
+                    whiteout: false
+                });
+            }
+
+            return mergedLines.length;
+        }
+
+        async function processCustomCoverFile(file) {
+            closeCustomLayoutModal();
+            setTemplate(4);
+
+            const fileName = file.name;
+            const ext = fileName.split('.').pop().toLowerCase();
+            customUploadedFileName = fileName;
+
+            const emptyState = document.getElementById('customEmptyState');
+            const canvasStage = document.getElementById('customCanvasStage');
+            const docxStage = document.getElementById('customDocxStage');
+            const bgImg = document.getElementById('customBgImage');
+            const pdfCanvas = document.getElementById('customPdfCanvas');
+            const customToolbar = document.getElementById('customLayoutToolbar');
+
+            emptyState.classList.add('hidden');
+            canvasStage.classList.add('hidden');
+            docxStage.classList.add('hidden');
+            bgImg.classList.add('hidden');
+            pdfCanvas.classList.add('hidden');
+
+            document.getElementById('customLayoutFileName').textContent = fileName.length > 24 ? fileName.slice(0, 21) + '...' : fileName;
+            customToolbar.classList.remove('hidden');
+            customToolbar.classList.add('flex');
+
+            try {
+                if (['jpg', 'jpeg', 'png'].includes(ext)) {
+                    customLayoutMode = 'image';
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        bgImg.src = e.target.result;
+                        bgImg.classList.remove('hidden');
+                        canvasStage.classList.remove('hidden');
+                        toggleOverlayControlsVisibility(true);
+                        document.getElementById('customOverlaysLayer').innerHTML = '';
+                        addCustomOverlayField(220, 480, 'Click to type text (Toggle "Whiteout Bg" to cover image text)', true);
+                        showToast('Image cover loaded! Click text to edit or double-click anywhere to add text.');
+                    };
+                    reader.readAsDataURL(file);
+                } else if (ext === 'pdf') {
+                    customLayoutMode = 'pdf';
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const page = await pdf.getPage(1);
+
+                    // Render Page 1 at crisp 2x resolution fitted to exact A4 794x1123
+                    const unscaledViewport = page.getViewport({ scale: 1 });
+                    const scaleX = 794 / unscaledViewport.width;
+                    const scaleY = 1123 / unscaledViewport.height;
+                    const fitScale = Math.min(scaleX, scaleY);
+                    const offsetX = (794 - unscaledViewport.width * fitScale) / 2;
+                    const offsetY = (1123 - unscaledViewport.height * fitScale) / 2;
+                    const renderScale = 2;
+                    const viewport = page.getViewport({ scale: fitScale * renderScale });
+
+                    pdfCanvas.width = 794 * renderScale;
+                    pdfCanvas.height = 1123 * renderScale;
+                    const ctx = pdfCanvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+
+                    ctx.save();
+                    ctx.translate(offsetX * renderScale, offsetY * renderScale);
+                    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                    ctx.restore();
+
+                    pdfCanvas.classList.remove('hidden');
+                    canvasStage.classList.remove('hidden');
+                    toggleOverlayControlsVisibility(true);
+
+                    // Extract text lines from the PDF so every text line is directly clickable & editable!
+                    const extractedCount = await extractAndRenderEditablePdfPage(
+                        page, pdfCanvas, ctx, fitScale, offsetX, offsetY, renderScale
+                    );
+
+                    if (extractedCount > 0) {
+                        showToast(`PDF loaded! ${extractedCount} text lines extracted—click any text on the page to edit.`);
+                    } else {
+                        populateSidebarOverlayFields();
+                        showToast('Scanned PDF loaded! Click any text box or double-click anywhere to edit.');
+                    }
+                } else if (ext === 'docx') {
+                    customLayoutMode = 'docx';
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                    const docxEditor = document.getElementById('customDocxEditor');
+                    docxEditor.innerHTML = result.value || '<p>Document loaded. Click anywhere here to edit text.</p>';
+                    docxStage.classList.remove('hidden');
+                    toggleOverlayControlsVisibility(false);
+                    showToast('DOCX cover loaded! Click anywhere on the page to edit text directly.');
+                } else {
+                    showToast('Unsupported format. Please upload JPG, JPEG, PNG, PDF, or DOCX.');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('Error loading file. Please try another valid file.');
+            }
+        }
+
+        function toggleOverlayControlsVisibility(isOverlayMode) {
+            document.getElementById('addOverlayFieldBtn').style.display = isOverlayMode ? 'flex' : 'none';
+            document.getElementById('syncSidebarFieldsBtn').style.display = isOverlayMode ? 'flex' : 'none';
+            document.getElementById('toggleWhiteoutBtn').style.display = isOverlayMode ? 'flex' : 'none';
+            document.getElementById('deleteOverlayBtn').style.display = isOverlayMode ? 'inline-flex' : 'none';
+        }
+
+        // Double-click anywhere on uploaded cover canvas to drop a new editable text box right there
+        function handleStageDoubleClick(event) {
+            if (event.target !== document.getElementById('customOverlaysLayer')) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const x = Math.round((event.clientX - rect.left) / currentZoom);
+            const y = Math.round((event.clientY - rect.top) / currentZoom);
+            const el = addCustomOverlayField(x, y, 'Type text here', customLayoutMode === 'image');
+            const editable = el.querySelector('[contenteditable="true"]');
+            if (editable) {
+                editable.focus();
+                document.execCommand('selectAll', false, null);
+            }
+        }
+
+        // Create a draggable, directly inline-editable text box on top of uploaded JPG/PNG/PDF cover
+        function createOverlayElement({ text, x, y, fontSize = '16px', fontWeight = 'normal', color = '#0f172a', fontFamily = "'Times New Roman', serif", syncFieldId = null, whiteout = false }) {
+            const layer = document.getElementById('customOverlaysLayer');
+            const id = 'overlay-item-' + (++overlayCounter);
+
+            const wrapper = document.createElement('div');
+            wrapper.id = id;
+            wrapper.className = 'custom-overlay-item' + (whiteout ? ' has-whiteout' : '');
+            wrapper.style.left = x + 'px';
+            wrapper.style.top = y + 'px';
+            wrapper.style.fontSize = fontSize;
+            wrapper.style.fontWeight = fontWeight;
+            wrapper.style.color = color;
+            wrapper.style.fontFamily = fontFamily;
+            if (syncFieldId) {
+                wrapper.dataset.syncField = syncFieldId;
+            }
+
+            // Dedicated drag handle so clicking inside text always focuses cursor cleanly
+            const handle = document.createElement('div');
+            handle.className = 'overlay-drag-handle no-print';
+            handle.title = 'Drag to move text';
+            handle.textContent = '⋮⋮ Move';
+            wrapper.appendChild(handle);
+
+            const editable = document.createElement('div');
+            editable.contentEditable = 'true';
+            editable.innerText = text;
+            wrapper.appendChild(editable);
+
+            function startDrag(e) {
+                e.preventDefault();
+                selectOverlayItem(id);
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const origLeft = parseFloat(wrapper.style.left) || 0;
+                const origTop = parseFloat(wrapper.style.top) || 0;
+
+                const onMouseMove = (moveEvt) => {
+                    const dx = (moveEvt.clientX - startX) / currentZoom;
+                    const dy = (moveEvt.clientY - startY) / currentZoom;
+                    wrapper.style.left = Math.max(0, Math.min(765, origLeft + dx)) + 'px';
+                    wrapper.style.top = Math.max(0, Math.min(1100, origTop + dy)) + 'px';
+                };
+
+                const onMouseUp = () => {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            }
+
+            handle.addEventListener('mousedown', startDrag);
+
+            // Clicking wrapper border drags; clicking editable text focuses immediately for editing
+            wrapper.addEventListener('mousedown', (e) => {
+                selectOverlayItem(id);
+                if (e.target === wrapper) {
+                    startDrag(e);
+                }
+            });
+
+            editable.addEventListener('focus', () => selectOverlayItem(id));
+
+            layer.appendChild(wrapper);
+            selectOverlayItem(id);
+            return wrapper;
+        }
+
+        function selectOverlayItem(id) {
+            document.querySelectorAll('.custom-overlay-item').forEach(el => el.classList.remove('selected'));
+            selectedOverlayId = id;
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.add('selected');
+                const size = parseInt(el.style.fontSize, 10);
+                if (!isNaN(size)) document.getElementById('overlayFontSize').value = size;
+            }
+        }
+
+        function addCustomOverlayField(x = 220, y = 520, initialText = 'Click to edit text', whiteout = false) {
+            return createOverlayElement({
+                text: initialText,
+                x,
+                y,
+                fontSize: '18px',
+                fontWeight: 'bold',
+                color: '#0f172a',
+                whiteout
+            });
+        }
+
+        function toggleSelectedWhiteout() {
+            if (!selectedOverlayId) {
+                showToast('Select a text box on the cover first.');
+                return;
+            }
+            const el = document.getElementById(selectedOverlayId);
+            if (el) {
+                el.classList.toggle('has-whiteout');
+            }
+        }
+
+        // Populate draggable overlay fields synced with the left sidebar inputs
+        function populateSidebarOverlayFields() {
+            const fields = [
+                { syncFieldId: 'inputDocType', text: document.getElementById('inputDocType').value, x: 250, y: 290, fontSize: '24px', fontWeight: 'bold', whiteout: customLayoutMode === 'image' },
+                { syncFieldId: 'inputCourseCode', text: 'Course Code: ' + document.getElementById('inputCourseCode').value, x: 250, y: 360, fontSize: '16px', fontWeight: 'bold', whiteout: customLayoutMode === 'image' },
+                { syncFieldId: 'inputCourseTitle', text: 'Course Title: ' + document.getElementById('inputCourseTitle').value, x: 250, y: 390, fontSize: '16px', fontWeight: 'bold', whiteout: customLayoutMode === 'image' },
+                { syncFieldId: 'inputTeacherName', text: 'Submitted To: ' + document.getElementById('inputTeacherName').value, x: 110, y: 620, fontSize: '15px', fontWeight: 'bold', whiteout: customLayoutMode === 'image' },
+                { syncFieldId: 'inputTeacherDesig', text: document.getElementById('inputTeacherDesig').value, x: 110, y: 645, fontSize: '14px', fontWeight: 'normal', whiteout: customLayoutMode === 'image' },
+                { syncFieldId: 'inputStudentName', text: 'Submitted By: ' + document.getElementById('inputStudentName').value, x: 430, y: 620, fontSize: '15px', fontWeight: 'bold', whiteout: customLayoutMode === 'image' },
+                { syncFieldId: 'inputStudentId', text: 'ID: ' + document.getElementById('inputStudentId').value, x: 430, y: 645, fontSize: '14px', fontWeight: 'normal', whiteout: customLayoutMode === 'image' },
+                { syncFieldId: 'inputDate', text: 'Date: ' + formatDisplayDate(document.getElementById('inputDate').value), x: 300, y: 920, fontSize: '15px', fontWeight: 'bold', whiteout: customLayoutMode === 'image' }
+            ];
+
+            fields.forEach(f => createOverlayElement(f));
+            showToast('Inserted sidebar form details onto the cover.');
+        }
+
+        function applyCustomStyle(prop, val) {
+            if (customLayoutMode === 'docx') {
+                document.execCommand('styleWithCSS', false, true);
+                if (prop === 'color') document.execCommand('foreColor', false, val);
+                if (prop === 'fontFamily') document.execCommand('fontName', false, val);
+                return;
+            }
+            if (!selectedOverlayId) return;
+            const el = document.getElementById(selectedOverlayId);
+            if (el) el.style[prop] = val;
+        }
+
+        function toggleCustomBold() {
+            if (customLayoutMode === 'docx') {
+                document.execCommand('bold', false, null);
+                return;
+            }
+            if (!selectedOverlayId) return;
+            const el = document.getElementById(selectedOverlayId);
+            if (el) el.style.fontWeight = el.style.fontWeight === 'bold' ? 'normal' : 'bold';
+        }
+
+        function toggleCustomItalic() {
+            if (customLayoutMode === 'docx') {
+                document.execCommand('italic', false, null);
+                return;
+            }
+            if (!selectedOverlayId) return;
+            const el = document.getElementById(selectedOverlayId);
+            if (el) el.style.fontStyle = el.style.fontStyle === 'italic' ? 'normal' : 'italic';
+        }
+
+        function applyCustomAlign(align) {
+            if (customLayoutMode === 'docx') {
+                const cmd = align === 'left' ? 'justifyLeft' : align === 'center' ? 'justifyCenter' : 'justifyRight';
+                document.execCommand(cmd, false, null);
+                return;
+            }
+            if (!selectedOverlayId) return;
+            const el = document.getElementById(selectedOverlayId);
+            if (el) el.style.textAlign = align;
+        }
+
+        function deleteSelectedOverlay() {
+            if (!selectedOverlayId) return;
+            const el = document.getElementById(selectedOverlayId);
+            if (el) {
+                el.remove();
+                selectedOverlayId = null;
+            }
+        }
+
+        // Synchronize sidebar inputs with all live cover page templates
+        function updatePreview() {
+            const docType = document.getElementById('inputDocType').value;
+            const semester = document.getElementById('inputSemester').value;
+            const courseCode = document.getElementById('inputCourseCode').value;
+            const courseTitle = document.getElementById('inputCourseTitle').value;
+            const teacherName = document.getElementById('inputTeacherName').value;
+            const teacherDesig = document.getElementById('inputTeacherDesig').value;
+            const teacherDept = document.getElementById('inputTeacherDept').value;
+            const studentName = document.getElementById('inputStudentName').value;
+            const studentId = document.getElementById('inputStudentId').value;
+            const section = document.getElementById('inputSection').value;
+            const dept = document.getElementById('inputDept').value;
+            const formattedDate = formatDisplayDate(document.getElementById('inputDate').value);
+
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val;
+            };
+
+            for (let i = 1; i <= 3; i++) {
+                setVal(`prev${i}-docType`, docType);
+                setVal(`prev${i}-semester`, semester);
+                setVal(`prev${i}-courseCode`, courseCode);
+                setVal(`prev${i}-courseTitle`, courseTitle);
+                setVal(`prev${i}-teacherName`, teacherName);
+                setVal(`prev${i}-teacherDesig`, teacherDesig);
+                setVal(`prev${i}-teacherDept`, teacherDept);
+                setVal(`prev${i}-studentName`, studentName);
+                setVal(`prev${i}-studentId`, studentId);
+                setVal(`prev${i}-section`, section);
+                setVal(`prev${i}-dept`, dept);
+                setVal(`prev${i}-date`, formattedDate);
+            }
+
+            // Also sync any linked overlay fields on Template 4 if present
+            document.querySelectorAll('#customOverlaysLayer [data-sync-field]').forEach(el => {
+                const fieldId = el.dataset.syncField;
+                const editable = el.querySelector('[contenteditable="true"]');
+                if (!editable) return;
+                if (fieldId === 'inputDocType') editable.innerText = docType;
+                else if (fieldId === 'inputCourseCode') editable.innerText = 'Course Code: ' + courseCode;
+                else if (fieldId === 'inputCourseTitle') editable.innerText = 'Course Title: ' + courseTitle;
+                else if (fieldId === 'inputTeacherName') editable.innerText = 'Submitted To: ' + teacherName;
+                else if (fieldId === 'inputTeacherDesig') editable.innerText = teacherDesig;
+                else if (fieldId === 'inputStudentName') editable.innerText = 'Submitted By: ' + studentName;
+                else if (fieldId === 'inputStudentId') editable.innerText = 'ID: ' + studentId;
+                else if (fieldId === 'inputDate') editable.innerText = 'Date: ' + formattedDate;
+            });
+        }
+
+        // Zoom Controls
+        function adjustZoom(delta) {
+            currentZoom = Math.min(1.25, Math.max(0.35, +(currentZoom + delta).toFixed(2)));
+            applyZoom();
+        }
+
+        function applyZoom() {
+            const wrapper = document.getElementById('a4ScaleWrapper');
+            wrapper.style.transform = `scale(${currentZoom})`;
+            wrapper.style.marginBottom = `${(currentZoom - 1) * 1123}px`;
+            document.getElementById('zoomLevelText').textContent = Math.round(currentZoom * 100) + '%';
+        }
+
+        function autoFitZoom() {
+            const container = document.getElementById('previewScrollArea');
+            if (!container) return;
+            const availableWidth = container.clientWidth - 64;
+            const fitScale = Math.min(0.85, Math.max(0.4, availableWidth / 794));
+            currentZoom = +fitScale.toFixed(2);
+            applyZoom();
+        }
+
+        // Direct PDF Download via html2pdf.js
+        function downloadPDF() {
+            const activeEl = document.getElementById(`template${activeTemplate}`);
+            if (!activeEl) return;
+
+            const docType = (document.getElementById('inputDocType').value || 'UITS_Cover_Page').replace(/\s+/g, '_');
+            const courseCode = (document.getElementById('inputCourseCode').value || '').replace(/\s+/g, '_');
+            const fileName = `${docType}${courseCode ? '_' + courseCode : ''}.pdf`;
+
+            showToast('Generating A4 PDF...');
+
+            // Deselect any active overlay box before exporting
+            document.querySelectorAll('.custom-overlay-item').forEach(el => el.classList.remove('selected'));
+
+            const opt = {
+                margin: 0,
+                filename: fileName,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, logging: false },
+                jsPDF: { unit: 'px', format: [794, 1123], orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(activeEl).save().then(() => {
+                showToast('PDF downloaded successfully!');
+            }).catch(() => {
+                showToast('Opening print dialog to save as PDF...');
+                window.print();
+            });
+        }
+
+        window.addEventListener('resize', autoFitZoom);
+
+        // Initialize Icons, Default Logo, Date, Preview, Template 1, and Fit Zoom on Load
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            document.getElementById('logoPreviewThumb').src = DEFAULT_LOGO_URL;
+            document.getElementById('prev1-logo').src = DEFAULT_LOGO_URL;
+            document.getElementById('prev2-logo').src = DEFAULT_LOGO_URL;
+            document.getElementById('prev3-logo').src = DEFAULT_LOGO_URL;
+            setDefaultDate();
+            updatePreview();
+            setTemplate(1);
+            autoFitZoom();
+        });
+    </script>
+</body>
+</html>
